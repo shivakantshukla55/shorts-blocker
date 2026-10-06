@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Shorts Blocker</string>
+    <string name="service_description">Detects the YouTube Shorts and Instagram Reels screens and closes them. It only looks at those two apps and does not store or send any data.</string>
+</resources>
