@@ -34,6 +34,16 @@ class BlockerService : AccessibilityService() {
             igPkg -> instagramIds
             else -> return
         }
+        // Diagnostic capture: while recording, only observe Instagram and never block.
+        if (pkg == igPkg && Capture.active()) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - Capture.lastSnapshotAt >= 400) {
+                Capture.lastSnapshotAt = now
+                Capture.record(snapshot())
+            }
+            return
+        }
+
         if (Prefs.isPaused(this)) return
 
         val root = rootInActiveWindow ?: return
@@ -96,6 +106,34 @@ class BlockerService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_BACK)
         }
         Toast.makeText(this, "Shorts / Reels blocked", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Collects "class|viewId|visible" for every Instagram view on screen, across all windows. */
+    private fun snapshot(): Set<String> {
+        val out = HashSet<String>()
+        val allWindows = windows
+        if (allWindows != null) {
+            for (w in allWindows) {
+                val r = w.root ?: continue
+                if (r.packageName?.toString() != igPkg) continue
+                out.add("WINDOW type=${w.type} layer=${w.layer}")
+                walk(r, 0, out)
+            }
+        }
+        if (out.isEmpty()) {
+            rootInActiveWindow?.let { walk(it, 0, out) }
+        }
+        return out
+    }
+
+    private fun walk(node: AccessibilityNodeInfo, depth: Int, out: MutableSet<String>) {
+        if (depth > 45) return
+        val id = node.viewIdResourceName?.substringAfter(":id/") ?: "-"
+        out.add("${node.className}|$id|visible=${node.isVisibleToUser}")
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            walk(child, depth + 1, out)
+        }
     }
 
     override fun onInterrupt() {}

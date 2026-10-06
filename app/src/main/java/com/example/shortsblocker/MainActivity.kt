@@ -22,6 +22,7 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var status: TextView
     private lateinit var container: LinearLayout
+    private lateinit var capStatus: TextView
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -75,6 +76,8 @@ class MainActivity : Activity() {
         })
 
         if (!Prefs.hasPassword(this)) buildSetPassword() else buildPauseControls()
+
+        buildDiagnostic()
 
         container.addView(
             tv(
@@ -148,6 +151,57 @@ class MainActivity : Activity() {
         })
     }
 
+    private fun buildDiagnostic() {
+        container.addView(tv("Diagnostic: Instagram Explore preview", 18f, true))
+        container.addView(
+            tv(
+                "1) Tap Capture A, open Instagram > Explore and scroll around (do not hold anything). " +
+                    "2) Come back here, tap Capture B, open Explore and press-and-hold a reel for a few seconds. " +
+                    "3) Come back and tap Show result. Only view class names and ids are recorded, never text. " +
+                    "Blocking on Instagram is switched off while a capture runs.",
+                13f
+            )
+        )
+        capStatus = tv("", 14f)
+        container.addView(capStatus)
+
+        container.addView(Button(this).apply {
+            text = "Capture A (normal Explore)"
+            setOnClickListener {
+                Capture.start(1)
+                toast("Capturing A for 30s. Open Instagram now.")
+            }
+        })
+        container.addView(Button(this).apply {
+            text = "Capture B (holding a reel)"
+            setOnClickListener {
+                Capture.start(2)
+                toast("Capturing B for 30s. Open Instagram and hold a reel.")
+            }
+        })
+
+        val result = TextView(this).apply {
+            setTextIsSelectable(true)
+            textSize = 11f
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+        container.addView(Button(this).apply {
+            text = "Show result"
+            setOnClickListener { result.text = Capture.report() }
+        })
+        container.addView(Button(this).apply {
+            text = "Share result"
+            setOnClickListener {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, Capture.report())
+                }
+                startActivity(Intent.createChooser(send, "Share result"))
+            }
+        })
+        container.addView(result)
+    }
+
     private fun serviceEnabled(): Boolean {
         val am = getSystemService(ACCESSIBILITY_SERVICE) as AccessibilityManager
         return am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
@@ -156,6 +210,14 @@ class MainActivity : Activity() {
 
     private fun refreshStatus() {
         if (!::status.isInitialized) return
+        if (::capStatus.isInitialized) {
+            capStatus.text = if (Capture.active()) {
+                val which = if (Capture.mode == 1) "A" else "B"
+                "Capturing $which: ${Capture.leftMs() / 1000}s left. Go to Instagram now."
+            } else {
+                "Capture idle."
+            }
+        }
         val left = Prefs.pauseLeftMs(this)
         when {
             !serviceEnabled() -> {
