@@ -46,48 +46,35 @@ class BlockerService : AccessibilityService() {
 
         if (Prefs.isPaused(this)) return
 
+        // The press-and-hold preview opens as its own pop-up window, so check every window.
+        if (pkg == igPkg && isPeekShowing()) {
+            block()
+            return
+        }
+
         val root = rootInActiveWindow ?: return
         if (root.packageName?.toString() != pkg) return
 
-        if (isVideoPlayerShowing(root, pkg, ids)) {
-            block()
-        } else if (pkg == igPkg && isExplorePreviewShowing(root)) {
-            block()
+        if (isVideoPlayerShowing(root, pkg, ids)) block()
+    }
+
+    /** True while Instagram's long-press preview ("peek") is on screen in any window. */
+    private fun isPeekShowing(): Boolean {
+        val roots = ArrayList<AccessibilityNodeInfo>()
+        windows?.forEach { w -> w.root?.let { roots.add(it) } }
+        rootInActiveWindow?.let { roots.add(it) }
+        for (r in roots) {
+            if (r.packageName?.toString() != igPkg) continue
+            val nodes = r.findAccessibilityNodeInfosByViewId("$igPkg:id/peek_container")
+            if (nodes.any { it.isVisibleToUser }) return true
         }
+        return false
     }
 
     private fun isVideoPlayerShowing(root: AccessibilityNodeInfo, pkg: String, ids: List<String>): Boolean {
         for (id in ids) {
             val nodes = root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")
             if (nodes.any { it.isVisibleToUser }) return true
-        }
-        return false
-    }
-
-    /**
-     * The press-and-hold preview on the Instagram Explore grid plays a video, while the
-     * grid itself only shows still thumbnails. So: Explore tab selected + a visible video
-     * surface on screen = a reel preview is playing.
-     */
-    private fun isExplorePreviewShowing(root: AccessibilityNodeInfo): Boolean {
-        if (!isExploreTabSelected(root)) return false
-        return hasVisibleVideoSurface(root, 0)
-    }
-
-    private fun isExploreTabSelected(root: AccessibilityNodeInfo): Boolean {
-        val byId = root.findAccessibilityNodeInfosByViewId("$igPkg:id/search_tab")
-        if (byId.any { it.isSelected }) return true
-        // findAccessibilityNodeInfosByText also matches content descriptions, ignoring case.
-        return root.findAccessibilityNodeInfosByText("Search and explore").any { it.isSelected }
-    }
-
-    private fun hasVisibleVideoSurface(node: AccessibilityNodeInfo, depth: Int): Boolean {
-        if (depth > 40) return false
-        val cls = node.className?.toString() ?: ""
-        if (node.isVisibleToUser && (cls.contains("TextureView") || cls.contains("SurfaceView"))) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (hasVisibleVideoSurface(child, depth + 1)) return true
         }
         return false
     }
